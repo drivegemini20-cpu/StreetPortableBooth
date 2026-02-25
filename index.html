@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Street Portable Booth</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
+
+        body {
+            background-color: #09090b;
+            color: #fafafa;
+            font-family: 'Space Mono', monospace;
+            overflow-x: hidden;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .title-font {
+            font-family: 'Oswald', sans-serif;
+        }
+
+        /* Video element mirroring for front-facing camera feel */
+        #video {
+            transform: scaleX(-1);
+            object-fit: cover;
+        }
+
+        /* Flash Animation */
+        #flash {
+            pointer-events: none;
+            transition: background-color 0.1s ease-out;
+            background-color: transparent;
+        }
+        #flash.active {
+            background-color: white;
+            transition: background-color 0s;
+        }
+
+        /* Pulse Animation for Countdown */
+        @keyframes pulse-scale {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+            50% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+        }
+        .animate-pulse-scale {
+            animation: pulse-scale 1s infinite;
+        }
+
+        /* Custom Scrollbar for the result view */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #18181b; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #52525b; 
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a1a1aa; 
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col relative overflow-hidden">
+
+    <!-- Error Message Box -->
+    <div id="error-box" class="fixed top-4 left-1/2 transform -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-md shadow-lg hidden z-50 flex items-center gap-3">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 256 256"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm-8-80V80a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,172Z"></path></svg>
+        <span id="error-message">Camera access denied.</span>
+        <button onclick="hideError()" class="ml-4 hover:text-red-200"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg></button>
+    </div>
+
+    <!-- 1. Welcome Screen -->
+    <div id="welcome-view" class="flex-1 flex flex-col items-center justify-center p-6 text-center z-10 transition-opacity duration-300">
+        <div class="mb-12 border-4 border-white p-6 inline-block bg-black shadow-[8px_8px_0px_0px_rgba(255,255,255,1)]">
+            <h1 class="title-font text-5xl md:text-7xl font-bold tracking-tighter uppercase leading-none">Street<br>Portable<br>Booth</h1>
+        </div>
+        <p class="mb-10 text-zinc-400 max-w-md">Capture 3 shots in succession. Frame yourself, strike a pose, and get your digital street strip.</p>
+        <button onclick="startCamera()" class="group relative px-8 py-4 bg-white text-black font-bold text-xl uppercase tracking-wider overflow-hidden transition-transform active:scale-95 shadow-[0px_0px_20px_rgba(255,255,255,0.3)] hover:shadow-[0px_0px_30px_rgba(255,255,255,0.6)]">
+            <span class="relative z-10">Start Session</span>
+            <div class="absolute inset-0 h-full w-full bg-zinc-300 transform scale-x-0 origin-left transition-transform duration-300 ease-out group-hover:scale-x-100"></div>
+        </button>
+    </div>
+
+    <!-- 2. Camera App Screen -->
+    <div id="camera-view" class="hidden flex-1 flex flex-col h-full w-full bg-black relative">
+        <!-- Top Bar -->
+        <div class="absolute top-0 left-0 w-full p-4 flex justify-between items-center z-20 bg-gradient-to-b from-black/70 to-transparent">
+            <span class="title-font font-bold text-xl tracking-widest">SPB // 01</span>
+            <button onclick="resetToWelcome()" class="bg-zinc-800 hover:bg-zinc-700 text-white p-2 rounded-full transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 256 256"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg>
+            </button>
+        </div>
+
+        <!-- Video Feed -->
+        <div class="flex-1 relative overflow-hidden bg-zinc-900 flex items-center justify-center">
+            <video id="video" autoplay playsinline class="absolute min-w-full min-h-full w-auto h-auto"></video>
+            
+            <!-- Grid Overlay for Framing -->
+            <div class="absolute inset-0 pointer-events-none opacity-30">
+                <div class="w-full h-1/3 border-b border-white"></div>
+                <div class="w-full h-1/3 border-b border-white"></div>
+                <div class="absolute top-0 left-1/3 w-1/3 h-full border-l border-r border-white"></div>
+            </div>
+
+            <!-- Flash Layer -->
+            <div id="flash" class="absolute inset-0 z-30"></div>
+
+            <!-- Countdown Overlay -->
+            <div id="countdown" class="hidden absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 title-font text-9xl font-bold text-white drop-shadow-[0_0_15px_rgba(0,0,0,0.8)] z-20">3</div>
+            
+            <!-- Shot Counter Overlay -->
+            <div id="shot-counter" class="hidden absolute top-24 left-1/2 transform -translate-x-1/2 bg-white text-black px-4 py-1 rounded-full font-bold z-20 shadow-lg">Shot 1 of 3</div>
+        </div>
+
+        <!-- Bottom Controls -->
+        <div class="h-32 bg-black flex items-center justify-center pb-6 pt-4 px-6 z-20 relative border-t border-zinc-800">
+            <button id="capture-btn" onclick="startCaptureSequence()" class="h-16 w-16 bg-white rounded-full flex items-center justify-center active:scale-90 transition-transform shadow-[0_0_0_4px_black,0_0_0_6px_white] hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                <div class="h-14 w-14 border-2 border-black rounded-full"></div>
+            </button>
+        </div>
+    </div>
+
+    <!-- 3. Result Screen -->
+    <div id="result-view" class="hidden h-full w-full flex flex-col md:flex-row bg-zinc-950">
+        
+        <!-- Preview Area -->
+        <div class="flex-1 overflow-y-auto p-6 flex items-center justify-center bg-zinc-900 relative">
+            <div class="absolute inset-0 opacity-[0.03] pointer-events-none" style="background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 20px 20px;"></div>
+            
+            <!-- The Photo Strip Image Container -->
+            <div class="relative z-10 shadow-[0_20px_50px_rgba(0,0,0,0.5)] transform transition-transform hover:scale-[1.02] duration-300">
+                <img id="result-image" src="" alt="Your Photo Strip" class="max-h-[80vh] md:max-h-[90vh] w-auto border-4 border-white object-contain bg-white">
+            </div>
+        </div>
+
+        <!-- Controls Area -->
+        <div class="w-full md:w-80 bg-black p-8 flex flex-col justify-center gap-4 border-t md:border-t-0 md:border-l border-zinc-800">
+            <div class="mb-6">
+                <h2 class="title-font text-3xl font-bold uppercase mb-2">Session Complete</h2>
+                <p class="text-zinc-400 text-sm">Your street strip is ready. Save it to your device or try another session.</p>
+            </div>
+
+            <button onclick="downloadPhoto()" class="w-full flex items-center justify-center gap-3 px-6 py-4 bg-white text-black font-bold uppercase tracking-wider hover:bg-zinc-200 transition-colors active:scale-95">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 256 256"><path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0Zm-101.66,5.66a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,124.69V32a8,8,0,0,0-16,0v92.69L93.66,98.34a8,8,0,0,0-11.32,11.32Z"></path></svg>
+                Save Photo
+            </button>
+            
+            <button onclick="resetToWelcome()" class="w-full flex items-center justify-center gap-3 px-6 py-4 border-2 border-white text-white font-bold uppercase tracking-wider hover:bg-white hover:text-black transition-colors active:scale-95">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 256 256"><path d="M197.67,197.67a83.65,83.65,0,0,1-118.34,0,8,8,0,0,1,11.32-11.32,67.66,67.66,0,0,0,95.68,0,68,68,0,0,0,0-96.17l-15.68-15.68V96a8,8,0,0,1-16,0V48a8,8,0,0,1,8-8h48a8,8,0,0,1,0,16H183l14.65,14.65A84,84,0,0,1,197.67,197.67Z"></path><path d="M85,181.65v-21.5a8,8,0,0,0-16,0v48a8,8,0,0,0,8,8h48a8,8,0,0,0,0-16H103.35l-14.66-14.65a84,84,0,0,1,0-118.83,8,8,0,0,0-11.32-11.32,100,100,0,0,0,0,141.48Z"></path></svg>
+                Retake
+            </button>
+        </div>
+    </div>
+
+    <!-- Hidden Canvas for Processing -->
+    <canvas id="finalCanvas" class="hidden"></canvas>
+
+    <script>
+        // App State
+        let stream = null;
+        let photos = [];
+        const NUM_PHOTOS = 3;
+        const COUNTDOWN_SECONDS = 3;
+
+        // DOM Elements
+        const views = {
+            welcome: document.getElementById('welcome-view'),
+            camera: document.getElementById('camera-view'),
+            result: document.getElementById('result-view')
+        };
+        const videoEl = document.getElementById('video');
+        const errorBox = document.getElementById('error-box');
+        const errorMessage = document.getElementById('error-message');
+        const flashEl = document.getElementById('flash');
+        const countdownEl = document.getElementById('countdown');
+        const shotCounterEl = document.getElementById('shot-counter');
+        const captureBtn = document.getElementById('capture-btn');
+
+        // View Management
+        function showView(viewName) {
+            Object.values(views).forEach(v => {
+                v.classList.add('hidden');
+                v.classList.remove('flex');
+            });
+            views[viewName].classList.remove('hidden');
+            if(viewName === 'result') {
+                views[viewName].classList.add('flex'); // Result uses flex row on desktop
+            } else {
+                views[viewName].classList.add('flex');
+            }
+        }
+
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorBox.classList.remove('hidden');
+            setTimeout(hideError, 5000);
+        }
+
+        function hideError() {
+            errorBox.classList.add('hidden');
+        }
+
+        // Camera Logic
+        async function startCamera() {
+            try {
+                // Request front facing camera with high resolution preference
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'user',
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    }, 
+                    audio: false 
+                });
+                videoEl.srcObject = stream;
+                showView('camera');
+                captureBtn.disabled = false;
+                shotCounterEl.classList.add('hidden');
+            } catch (err) {
+                console.error("Camera Error:", err);
+                showError('Unable to access camera. Please check permissions.');
+            }
+        }
+
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+                videoEl.srcObject = null;
+            }
+        }
+
+        function resetToWelcome() {
+            stopCamera();
+            photos = [];
+            showView('welcome');
+        }
+
+        // Capture Sequence Logic
+        async function startCaptureSequence() {
+            captureBtn.disabled = true;
+            photos = [];
+            shotCounterEl.classList.remove('hidden');
+
+            for (let i = 0; i < NUM_PHOTOS; i++) {
+                shotCounterEl.textContent = `Shot ${i + 1} of ${NUM_PHOTOS}`;
+                await runCountdown();
+                captureFrame();
+                triggerFlash();
+                // Short pause after flash before starting next countdown
+                if (i < NUM_PHOTOS - 1) {
+                    await new Promise(r => setTimeout(r, 800));
+                }
+            }
+
+            shotCounterEl.classList.add('hidden');
+            stopCamera();
+            await generatePhotoStrip();
+        }
+
+        function runCountdown() {
+            return new Promise(resolve => {
+                let count = COUNTDOWN_SECONDS;
+                countdownEl.classList.remove('hidden');
+                countdownEl.classList.add('animate-pulse-scale');
+                countdownEl.innerText = count;
+
+                const interval = setInterval(() => {
+                    count--;
+                    if (count > 0) {
+                        // Small trick to restart CSS animation
+                        countdownEl.classList.remove('animate-pulse-scale');
+                        void countdownEl.offsetWidth; // trigger reflow
+                        countdownEl.classList.add('animate-pulse-scale');
+                        countdownEl.innerText = count;
+                    } else {
+                        clearInterval(interval);
+                        countdownEl.classList.remove('animate-pulse-scale');
+                        countdownEl.classList.add('hidden');
+                        resolve();
+                    }
+                }, 1000);
+            });
+        }
+
+        function captureFrame() {
+            const tempCanvas = document.createElement('canvas');
+            // Capture at video native resolution
+            tempCanvas.width = videoEl.videoWidth;
+            tempCanvas.height = videoEl.videoHeight;
+            const ctx = tempCanvas.getContext('2d');
+            
+            // Mirror image to match user's perspective on screen
+            ctx.translate(tempCanvas.width, 0);
+            ctx.scale(-1, 1);
+            
+            ctx.drawImage(videoEl, 0, 0, tempCanvas.width, tempCanvas.height);
+            photos.push(tempCanvas.toDataURL('image/jpeg', 0.9));
+        }
+
+        function triggerFlash() {
+            flashEl.classList.add('active');
+            // Remove class shortly after to trigger CSS transition fade out
+            setTimeout(() => {
+                flashEl.classList.remove('active');
+            }, 50);
+        }
+
+        // Photo Strip Generation
+        async function generatePhotoStrip() {
+            const canvas = document.getElementById('finalCanvas');
+            const ctx = canvas.getContext('2d');
+
+            // Standard photo booth strip configuration
+            const imgWidth = 600;
+            const imgHeight = 450; // 4:3 aspect ratio per frame
+            const margin = 30;     // Outer border
+            const spacing = 15;    // Space between photos
+            const footerHeight = 180;
+
+            // Calculate total dimensions
+            canvas.width = imgWidth + (margin * 2);
+            canvas.height = margin + (imgHeight * NUM_PHOTOS) + (spacing * (NUM_PHOTOS - 1)) + footerHeight;
+
+            // Fill Background (Classic White)
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Images
+            for (let i = 0; i < NUM_PHOTOS; i++) {
+                await new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const y = margin + (i * (imgHeight + spacing));
+                        drawCoverCrop(ctx, img, margin, y, imgWidth, imgHeight);
+                        
+                        // Add a subtle border around each photo
+                        ctx.strokeStyle = '#e4e4e7'; // zinc-200
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(margin, y, imgWidth, imgHeight);
+                        
+                        resolve();
+                    };
+                    img.src = photos[i];
+                });
+            }
+
+            // Draw Footer Typography
+            const centerY = canvas.height - (footerHeight / 2);
+            
+            ctx.fillStyle = '#000000';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            // App Name
+            ctx.font = 'bold 50px "Oswald", sans-serif';
+            ctx.fillText('STREET BOOTH', canvas.width / 2, centerY - 20);
+            
+            // Date / Identifier
+            ctx.font = '24px "Space Mono", monospace';
+            ctx.fillStyle = '#52525b'; // zinc-600
+            
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' }).toUpperCase();
+            const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute:'2-digit' });
+            
+            ctx.fillText(`${dateStr} // ${timeStr}`, canvas.width / 2, centerY + 30);
+
+            // Update UI
+            document.getElementById('result-image').src = canvas.toDataURL('image/png');
+            showView('result');
+        }
+
+        // Helper: Draw image mimicking CSS "object-fit: cover"
+        function drawCoverCrop(ctx, img, x, y, w, h) {
+            const imgRatio = img.width / img.height;
+            const targetRatio = w / h;
+            let sx, sy, sw, sh;
+
+            if (imgRatio > targetRatio) {
+                // Image is wider than target
+                sh = img.height;
+                sw = sh * targetRatio;
+                sx = (img.width - sw) / 2;
+                sy = 0;
+            } else {
+                // Image is taller than target
+                sw = img.width;
+                sh = sw / targetRatio;
+                sx = 0;
+                sy = (img.height - sh) / 2;
+            }
+
+            ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+        }
+
+        function downloadPhoto() {
+            const canvas = document.getElementById('finalCanvas');
+            const dataUrl = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.download = `street-booth-${Date.now()}.png`;
+            link.href = dataUrl;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
